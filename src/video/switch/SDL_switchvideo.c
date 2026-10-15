@@ -19,6 +19,8 @@
   3. This notice may not be removed or altered from any source distribution.
 */
 
+#include "SDL_internal.h"
+
 #if SDL_VIDEO_DRIVER_SWITCH
 
 #include "../../events/SDL_keyboard_c.h"
@@ -99,6 +101,7 @@ static SDL_VideoDevice *SWITCH_CreateDevice()
     device->RestoreWindow = SWITCH_RestoreWindow;
     device->DestroyWindow = SWITCH_DestroyWindow;
 
+#ifdef SDL_VIDEO_OPENGL_EGL
     device->GL_LoadLibrary = SWITCH_GLES_LoadLibrary;
     device->GL_GetProcAddress = SWITCH_GLES_GetProcAddress;
     device->GL_UnloadLibrary = SWITCH_GLES_UnloadLibrary;
@@ -109,6 +112,7 @@ static SDL_VideoDevice *SWITCH_CreateDevice()
     device->GL_SwapWindow = SWITCH_GLES_SwapWindow;
     device->GL_DestroyContext = SWITCH_GLES_DestroyContext;
     device->GL_DefaultProfileConfig = SWITCH_GLES_DefaultProfileConfig;
+#endif
 
     device->StartTextInput = SWITCH_StartTextInput;
     device->StopTextInput = SWITCH_StopTextInput;
@@ -168,12 +172,14 @@ bool SWITCH_VideoInit(SDL_VideoDevice *_this)
 
 void SWITCH_VideoQuit(SDL_VideoDevice *_this)
 {
+#ifdef SDL_VIDEO_OPENGL_EGL
     // this should not be needed if user code is right (SDL_GL_LoadLibrary/SDL_GL_UnloadLibrary calls match)
     // this (user) error doesn't have the same effect on switch thought, as the driver needs to be unloaded (crash)
     if (_this->gl_config.driver_loaded > 0) {
         SWITCH_GLES_UnloadLibrary(_this);
         _this->gl_config.driver_loaded = 0;
     }
+#endif
 
     // exit touch
     SWITCH_QuitTouch();
@@ -218,16 +224,24 @@ bool SWITCH_SetDisplayMode(SDL_VideoDevice *_this, SDL_VideoDisplay *display, SD
     }
 
     SDL_WindowData *data = (SDL_WindowData *)switch_window->internal;
-    SDL_GLContext ctx = SDL_GL_GetCurrentContext();
-    NWindow *nWindow = nwindowGetDefault();
 
-    if (data != NULL && data->egl_surface != EGL_NO_SURFACE) {
-        SDL_EGL_MakeCurrent(_this, NULL, NULL);
-        SDL_EGL_DestroySurface(_this, data->egl_surface);
-        nwindowSetDimensions(nWindow, mode->w, mode->h);
-        data->egl_surface = SDL_EGL_CreateSurface(_this, switch_window, nWindow);
-        SDL_EGL_MakeCurrent(_this, data->egl_surface, ctx);
+    if (data == NULL || data->adopted) {
+        return true; // host owns the layer
     }
+
+#ifdef SDL_VIDEO_OPENGL_EGL
+    {
+        SDL_GLContext ctx = SDL_GL_GetCurrentContext();
+        NWindow *nWindow = data->nwindow;
+        if (data->egl_surface != EGL_NO_SURFACE) {
+            SDL_EGL_MakeCurrent(_this, NULL, NULL);
+            SDL_EGL_DestroySurface(_this, data->egl_surface);
+            nwindowSetDimensions(nWindow, mode->w, mode->h);
+            data->egl_surface = SDL_EGL_CreateSurface(_this, switch_window, nWindow);
+            SDL_EGL_MakeCurrent(_this, data->egl_surface, ctx);
+        }
+    }
+#endif
 
     return true;
 }
@@ -237,13 +251,12 @@ static bool SWITCH_CreateWindow(SDL_VideoDevice *_this, SDL_Window *window, SDL_
     Result rc;
     SDL_WindowData *window_data = NULL;
     NWindow *nWindow = NULL;
+    NWindow *adopted = NULL;
+    ViLayer *vilayer = NULL;
+    ViDisplay *vidisplay = NULL;
 
     if (switch_window != NULL) {
         return SDL_SetError("Switch only supports one window");
-    }
-
-    if (!_this->egl_data) {
-        return SDL_SetError("EGL not initialized");
     }
 
     window_data = (SDL_WindowData *)SDL_calloc(1, sizeof(SDL_WindowData));
@@ -251,16 +264,58 @@ static bool SWITCH_CreateWindow(SDL_VideoDevice *_this, SDL_Window *window, SDL_
         return SDL_OutOfMemory();
     }
 
-    nWindow = nwindowGetDefault();
+    adopted = (NWindow *)SDL_GetPointerProperty(create_props, SDL_PROP_WINDOW_CREATE_SWITCH_NWINDOW_POINTER, NULL);
+    if (adopted) {
+        SDL_PropertiesID wprops;
+        window_data->adopted = true;
+        window_data->nwindow = adopted;
+#ifdef SDL_VIDEO_OPENGL_EGL
+        window_data->egl_surface = EGL_NO_SURFACE;
+#endif
+        vilayer = (ViLayer *)SDL_GetPointerProperty(create_props, SDL_PROP_WINDOW_CREATE_SWITCH_VILAYER_POINTER, NULL);
+        if (vilayer) {
+            window_data->layer = *vilayer;
+            window_data->has_layer = true;
+        }
+        vidisplay = (ViDisplay *)SDL_GetPointerProperty(create_props, SDL_PROP_WINDOW_CREATE_SWITCH_VIDISPLAY_POINTER, NULL);
+        if (vidisplay) {
+            window_data->display = *vidisplay;
+            window_data->has_display = true;
+        }
 
-    rc = nwindowSetDimensions(nWindow, window->w, window->h);
-    if (R_FAILED(rc)) {
-        return SDL_SetError("Could not set NWindow dimensions: 0x%x", rc);
-    }
+        wprops = SDL_GetWindowProperties(window);
+        SDL_SetPointerProperty(wprops, SDL_PROP_WINDOW_CREATE_SWITCH_NWINDOW_POINTER, adopted);
+        if (vilayer) {
+            SDL_SetPointerProperty(wprops, SDL_PROP_WINDOW_CREATE_SWITCH_VILAYER_POINTER, vilayer);
+        }
+        if (vidisplay) {
+            SDL_SetPointerProperty(wprops, SDL_PROP_WINDOW_CREATE_SWITCH_VIDISPLAY_POINTER, vidisplay);
+        }
+    } else {
+#ifdef SDL_VIDEO_OPENGL_EGL
+        if (!_this->egl_data) {
+            SDL_free(window_data);
+            return SDL_SetError("EGL not initialized");
+        }
 
-    window_data->egl_surface = SDL_EGL_CreateSurface(_this, window, nWindow);
-    if (window_data->egl_surface == EGL_NO_SURFACE) {
-        return SDL_SetError("Could not create GLES window surface");
+        nWindow = nwindowGetDefault();
+
+        rc = nwindowSetDimensions(nWindow, window->w, window->h);
+        if (R_FAILED(rc)) {
+            SDL_free(window_data);
+            return SDL_SetError("Could not set NWindow dimensions: 0x%x", rc);
+        }
+
+        window_data->egl_surface = SDL_EGL_CreateSurface(_this, window, nWindow);
+        if (window_data->egl_surface == EGL_NO_SURFACE) {
+            SDL_free(window_data);
+            return SDL_SetError("Could not create GLES window surface");
+        }
+        window_data->nwindow = nWindow;
+#else
+        SDL_free(window_data);
+        return SDL_SetError("No adopted NWindow and EGL support not compiled in");
+#endif
     }
 
     /* Setup driver data for this window */
@@ -284,10 +339,12 @@ static void SWITCH_DestroyWindow(SDL_VideoDevice *_this, SDL_Window *window)
 
     if (window == switch_window) {
         if (data != NULL) {
+#ifdef SDL_VIDEO_OPENGL_EGL
             if (data->egl_surface != EGL_NO_SURFACE) {
                 SDL_EGL_MakeCurrent(_this, NULL, NULL);
                 SDL_EGL_DestroySurface(_this, data->egl_surface);
             }
+#endif
 
             SDL_free(window->internal);
             window->internal = NULL;
@@ -314,18 +371,29 @@ static void SWITCH_SetWindowSize(SDL_VideoDevice *_this, SDL_Window *window)
 {
     u32 w = 0, h = 0;
     SDL_WindowData *data = (SDL_WindowData *)window->internal;
-    SDL_GLContext ctx = SDL_GL_GetCurrentContext();
-    NWindow *nWindow = nwindowGetDefault();
 
-    if (window->w != w || window->h != h) {
-        if (data != NULL && data->egl_surface != EGL_NO_SURFACE) {
-            SDL_EGL_MakeCurrent(_this, NULL, NULL);
-            SDL_EGL_DestroySurface(_this, data->egl_surface);
-            nwindowSetDimensions(nWindow, window->w, window->h);
-            data->egl_surface = SDL_EGL_CreateSurface(_this, window, nWindow);
-            SDL_EGL_MakeCurrent(_this, data->egl_surface, ctx);
+    if (data == NULL || data->adopted) {
+        return; // host owns the layer
+    }
+
+#ifdef SDL_VIDEO_OPENGL_EGL
+    {
+        SDL_GLContext ctx = SDL_GL_GetCurrentContext();
+        NWindow *nWindow = data->nwindow;
+        if (window->w != w || window->h != h) {
+            if (data->egl_surface != EGL_NO_SURFACE) {
+                SDL_EGL_MakeCurrent(_this, NULL, NULL);
+                SDL_EGL_DestroySurface(_this, data->egl_surface);
+                nwindowSetDimensions(nWindow, window->w, window->h);
+                data->egl_surface = SDL_EGL_CreateSurface(_this, window, nWindow);
+                SDL_EGL_MakeCurrent(_this, data->egl_surface, ctx);
+            }
         }
     }
+#else
+    (void)w;
+    (void)h;
+#endif
 }
 
 static void SWITCH_ShowWindow(SDL_VideoDevice *_this, SDL_Window *window)

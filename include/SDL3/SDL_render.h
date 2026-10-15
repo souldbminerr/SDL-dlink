@@ -575,6 +575,9 @@ extern SDL_DECLSPEC SDL_PropertiesID SDLCALL SDL_GetRendererProperties(SDL_Rende
 #define SDL_PROP_RENDERER_VULKAN_PRESENT_QUEUE_FAMILY_INDEX_NUMBER  "SDL.renderer.vulkan.present_queue_family_index"
 #define SDL_PROP_RENDERER_VULKAN_SWAPCHAIN_IMAGE_COUNT_NUMBER       "SDL.renderer.vulkan.swapchain_image_count"
 #define SDL_PROP_RENDERER_GPU_DEVICE_POINTER                        "SDL.renderer.gpu.device"
+#define SDL_PROP_RENDERER_DEKO3D_DEVICE_POINTER                     "SDL.renderer.deko3d.device"
+#define SDL_PROP_RENDERER_DEKO3D_QUEUE_POINTER                      "SDL.renderer.deko3d.queue"
+#define SDL_PROP_RENDERER_DEKO3D_NWINDOW_POINTER                    "SDL.renderer.deko3d.nwindow"
 
 /**
  * Get the output size in pixels of a rendering context.

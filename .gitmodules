@@ -1,3 +1,6 @@
 [submodule "extern/libnx-dlink"]
 	path = extern/libnx-dlink
 	url = https://github.com/souldbminerr/libnx-dlink.git
+[submodule "extern/neko3d"]
+	path = extern/neko3d
+	url = https://github.com/souldbminerr/neko3d.git

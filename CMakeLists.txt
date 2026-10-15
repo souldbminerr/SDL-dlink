@@ -321,6 +321,7 @@ dep_option(SDL_DUMMYVIDEO          "Use dummy video driver" ON "SDL_VIDEO" OFF)
 dep_option(SDL_IBUS                "Enable IBus support" ON "${UNIX_SYS}" OFF)
 dep_option(SDL_OPENGL              "Include OpenGL support" ON "SDL_VIDEO;NOT IOS;NOT VISIONOS;NOT TVOS;NOT WATCHOS" OFF)
 dep_option(SDL_OPENGLES            "Include OpenGL ES support" ON "SDL_VIDEO;NOT VISIONOS;NOT TVOS;NOT WATCHOS" OFF)
+set_option(SDL_DNRO_BUILD           "Embed Switch newlib shims for dlink .dnro builds" OFF)
 set_option(SDL_PTHREADS            "Use POSIX threads for multi-threading" ${SDL_PTHREADS_DEFAULT})
 dep_option(SDL_PTHREADS_SEM        "Use pthread semaphores" ON "SDL_PTHREADS" OFF)
 dep_option(SDL_OSS                 "Support the OSS audio API" ${SDL_OSS_DEFAULT} "UNIX_SYS OR RISCOS;SDL_AUDIO" OFF)
@@ -3424,6 +3425,66 @@ elseif(NINTENDO_SWITCH)
     CheckOpenGL()
 
     sdl_compile_options(PRIVATE -DSDL_VIDEO_STATIC_ANGLE)
+
+    set(SDL_VIDEO_RENDER_SWITCH_DEKO3D 1)
+
+    # deko3d renderer shaders: GLSL -> DKSH (uam) -> embedded headers (xxd).
+    find_package(Python3 COMPONENTS Interpreter)
+    set(SDL_DEKO3D_UAM "$ENV{DEVKITPRO}/tools/bin/uam")
+    if(NOT Python3_EXECUTABLE)
+      message(WARNING "Python3 not found, disabling SDL_VIDEO_RENDER_SWITCH_DEKO3D")
+      set(SDL_VIDEO_RENDER_SWITCH_DEKO3D OFF)
+    elseif(NOT EXISTS "${SDL_DEKO3D_UAM}")
+      message(WARNING "uam not found at ${SDL_DEKO3D_UAM}, disabling SDL_VIDEO_RENDER_SWITCH_DEKO3D")
+      set(SDL_VIDEO_RENDER_SWITCH_DEKO3D OFF)
+    else()
+      set(SDL_DEKO3D_SHADER_SRC "${SDL3_SOURCE_DIR}/src/render/deko3d/shader_src")
+      set(SDL_DEKO3D_SHADER_GEN "${CMAKE_CURRENT_BINARY_DIR}/deko3d-shaders")
+      file(MAKE_DIRECTORY "${SDL_DEKO3D_SHADER_GEN}")
+      set(SDL_DEKO3D_SHADER_HEADERS "")
+      foreach(pair sdl_color_vsh:vert sdl_color_fsh:frag sdl_tex_vsh:vert sdl_tex_fsh:frag)
+        string(REPLACE ":" ";" pair_parts "${pair}")
+        list(GET pair_parts 0 shader_base)
+        list(GET pair_parts 1 shader_stage)
+        set(shader_glsl "${SDL_DEKO3D_SHADER_SRC}/${shader_base}.glsl")
+        set(shader_dksh "${SDL_DEKO3D_SHADER_GEN}/${shader_base}.dksh")
+        set(shader_hdr "${SDL_DEKO3D_SHADER_GEN}/${shader_base}_dksh.h")
+        add_custom_command(
+          OUTPUT "${shader_hdr}"
+          COMMAND "${SDL_DEKO3D_UAM}" -s ${shader_stage} -o "${shader_dksh}" "${shader_glsl}"
+          COMMAND "${Python3_EXECUTABLE}" "${SDL3_SOURCE_DIR}/cmake/xxd.py" -i "${shader_dksh}" -o "${shader_hdr}"
+          DEPENDS "${shader_glsl}" "${SDL_DEKO3D_UAM}" "${SDL3_SOURCE_DIR}/cmake/xxd.py"
+          COMMENT "Compiling deko3d shader ${shader_base}.glsl"
+        )
+        list(APPEND SDL_DEKO3D_SHADER_HEADERS "${shader_hdr}")
+      endforeach()
+      sdl_sources(${SDL_DEKO3D_SHADER_HEADERS})
+      sdl_include_directories(PRIVATE "${SDL_DEKO3D_SHADER_GEN}")
+    endif()
+  endif()
+
+  # Runtime module loading via libnx-dlink (used by the deko3d renderer to
+  # bind neko3d.dnro from the libs directory with zero link-time dependency).
+  set(SDL_LOADSO_SWITCH 1)
+  sdl_glob_sources(
+    "${SDL3_SOURCE_DIR}/src/loadso/switch/*.c"
+    "${SDL3_SOURCE_DIR}/src/loadso/switch/*.h"
+  )
+  set(HAVE_SDL_LOADSO TRUE)
+
+  sdl_include_directories(PRIVATE
+    "${SDL3_SOURCE_DIR}/extern/neko3d/include"
+    "${SDL3_SOURCE_DIR}/extern/libnx-dlink/include"
+  )
+
+  # dlink .dnro support: embed the Switch newlib shims (src/stdlib/switch/)
+  # so sdl3.dnro imports nothing no host provides. Off for every other build.
+  if(SDL_DNRO_BUILD)
+    sdl_glob_sources(
+      "${SDL3_SOURCE_DIR}/src/stdlib/switch/*.c"
+      "${SDL3_SOURCE_DIR}/src/stdlib/switch/*.h"
+    )
+    sdl_compile_definitions(PRIVATE SDL_DNRO_BUILD)
   endif()
 
   if(SDL_AUDIO)

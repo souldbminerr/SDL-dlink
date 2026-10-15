@@ -31,7 +31,15 @@
 
 typedef struct SDL_WindowData
 {
+#ifdef SDL_VIDEO_OPENGL_EGL
     EGLSurface egl_surface;
+#endif
+    NWindow *nwindow;
+    ViLayer layer;
+    ViDisplay display;
+    bool has_layer;
+    bool has_display;
+    bool adopted;
 } SDL_WindowData;
 
 #endif /* SDL_VIDEO_DRIVER_SWITCH */

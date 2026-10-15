@@ -1,3 +1,13 @@
+# sdl-dlink FORK
+
+an UNNOFFICAL, fork of devkitPro SDL3 that adds support for dynamic linking
+
+using libnx-dlink and a neko3d draw backend (instead of EGL)
+requires neko3d.dnro is sdmc:/lib/
+
+And one other thing: you have to manually do VI layer initialization and NWindow initialization instead of using SDL for this (this is to allow low level/nonstandard applications)
+
+The unmodified SDL3 readme follows
 
 Simple DirectMedia Layer (SDL for short) is a cross-platform library
 designed to make it easy to write multi-media software, such as games

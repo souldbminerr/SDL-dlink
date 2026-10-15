@@ -1360,11 +1360,24 @@ extern SDL_DECLSPEC SDL_Window * SDLCALL SDL_CreatePopupWindow(SDL_Window *paren
  * - `SDL_PROP_WINDOW_CREATE_WIN32_PIXEL_FORMAT_HWND_POINTER`: optional,
  *   another window to share pixel format with, useful for OpenGL windows
  *
- * These are additional supported properties with X11:
- *
- * - `SDL_PROP_WINDOW_CREATE_X11_WINDOW_NUMBER`: the X11 Window associated
- *   with the window, if you want to wrap an existing window.
- *
+  * These are additional supported properties with X11:
+  *
+  * - `SDL_PROP_WINDOW_CREATE_X11_WINDOW_NUMBER`: the X11 Window associated
+  *   with the window, if you want to wrap an existing window.
+  *
+  * These are additional supported properties on Nintendo Switch:
+  *
+  * - `SDL_PROP_WINDOW_CREATE_SWITCH_NWINDOW_POINTER`: the NWindow to adopt
+  *   as the window's native surface, if you want to wrap a window created
+  *   by the host (no default window exists outside applet context).
+  * - `SDL_PROP_WINDOW_CREATE_SWITCH_VILAYER_POINTER`: the ViLayer backing
+  *   the adopted NWindow, for layer management. Optional.
+  * - `SDL_PROP_WINDOW_CREATE_SWITCH_VIDISPLAY_POINTER`: the ViDisplay
+  *   backing the adopted NWindow, for layer management. Optional.
+  *
+  * The Switch video driver republishes adopted handles on the window, so
+  * renderers and apps can read them back with SDL_GetWindowProperties.
+  *
  * The window is implicitly shown if the "hidden" property is not set.
  *
  * These are additional supported properties with Emscripten:
@@ -1444,6 +1457,9 @@ extern SDL_DECLSPEC SDL_Window * SDLCALL SDL_CreateWindowWithProperties(SDL_Prop
 #define SDL_PROP_WINDOW_CREATE_WIN32_HWND_POINTER                  "SDL.window.create.win32.hwnd"
 #define SDL_PROP_WINDOW_CREATE_WIN32_PIXEL_FORMAT_HWND_POINTER     "SDL.window.create.win32.pixel_format_hwnd"
 #define SDL_PROP_WINDOW_CREATE_X11_WINDOW_NUMBER                   "SDL.window.create.x11.window"
+#define SDL_PROP_WINDOW_CREATE_SWITCH_NWINDOW_POINTER              "SDL.window.create.switch.nwindow"
+#define SDL_PROP_WINDOW_CREATE_SWITCH_VILAYER_POINTER              "SDL.window.create.switch.vilayer"
+#define SDL_PROP_WINDOW_CREATE_SWITCH_VIDISPLAY_POINTER            "SDL.window.create.switch.vidisplay"
 #define SDL_PROP_WINDOW_CREATE_EMSCRIPTEN_CANVAS_ID_STRING         "SDL.window.create.emscripten.canvas_id"
 #define SDL_PROP_WINDOW_CREATE_EMSCRIPTEN_KEYBOARD_ELEMENT_STRING  "SDL.window.create.emscripten.keyboard_element"
 

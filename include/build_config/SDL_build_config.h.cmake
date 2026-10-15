@@ -358,6 +358,7 @@
 #cmakedefine SDL_LOADSO_DLOPEN 1
 #cmakedefine SDL_LOADSO_DUMMY 1
 #cmakedefine SDL_LOADSO_WINDOWS 1
+#cmakedefine SDL_LOADSO_SWITCH 1
 
 #cmakedefine SDL_LOADSO_PRIVATE 1
 
@@ -468,6 +469,7 @@
 #cmakedefine SDL_VIDEO_RENDER_PS2 1
 #cmakedefine SDL_VIDEO_RENDER_PSP 1
 #cmakedefine SDL_VIDEO_RENDER_VITA_GXM 1
+#cmakedefine SDL_VIDEO_RENDER_SWITCH_DEKO3D 1
 
 #cmakedefine SDL_VIDEO_RENDER_PRIVATE 1
 

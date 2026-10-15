@@ -138,6 +138,9 @@ static const SDL_RenderDriver *render_drivers[] = {
 #ifdef SDL_VIDEO_RENDER_VITA_GXM
     &VITA_GXM_RenderDriver,
 #endif
+#ifdef SDL_VIDEO_RENDER_SWITCH_DEKO3D
+    &SWITCH_DEKO3D_RenderDriver,
+#endif
 #ifdef SDL_VIDEO_RENDER_VULKAN
     &VULKAN_RenderDriver,
 #endif
