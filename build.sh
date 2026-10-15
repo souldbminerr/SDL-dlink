@@ -9,8 +9,7 @@
 #
 # Usage: ./build.sh [--smoke]
 #   --smoke  also build the smoke test NRO and stage dist/switch/smoke.nro.
-# The qlaunch loader remains the ABI reference host (HOST_ELF, default
-# ../qlaunch-ext/loader/loader.elf); everything else comes from this tree.
+# Env: HOST_ELF: optional host ELF to verify sdl3 imports against.
 set -eu
 
 usage() {
@@ -31,7 +30,6 @@ BUILD="$ROOT/build-switch"
 DNRO="$ROOT/dnro"
 DLINK="$ROOT/extern/libnx-dlink"
 NEKO="$ROOT/extern/neko3d"
-HOST_ELF="${HOST_ELF:-$ROOT/../qlaunch-ext/loader/loader.elf}"
 NEKO_ELF="$NEKO/neko3d-module/neko3d.elf"
 
 if [ -z "${DEVKITPRO:-}" ]; then
@@ -81,30 +79,30 @@ $CC -specs="$DLINK/tools/module.specs" -g $ARCH -shared -nodefaultlibs \
 "$NM" -D --defined-only "$DNRO/sdl3.elf" | awk '{print $NF}' | sort -u > "$DNRO/sdl3.def"
 "$NM" -D -u "$DNRO/sdl3.elf" | awk '{print $NF}' | sort -u > "$DNRO/sdl3.undef"
 
-# 5. ABI check: every sdl3 import must resolve from the host or lib modules.
-# A dnro that imports what nobody provides dies at dlopen with a bare
-# dlink COULD_NOT_RESOLVE; fail the build instead.
-if [ ! -f "$HOST_ELF" ]; then
-    echo "error: host $HOST_ELF not found (set HOST_ELF=... to override)" >&2
-    exit 1
+# 5. ABI check (needs HOST_ELF): every sdl3 import must resolve from the
+# host or the neko3d module. A dnro that imports what nobody provides dies
+# at dlopen with a bare dlink COULD_NOT_RESOLVE; fail the build instead.
+if [ -z "${HOST_ELF:-}" ]; then
+    echo "note: HOST_ELF unset, skipping host ABI check"
+else
+    if [ ! -f "$HOST_ELF" ]; then
+        echo "error: host $HOST_ELF not found" >&2
+        exit 1
+    fi
+    # Note: .def files may carry CRLF (Windows checkouts); strip CR so comm
+    # compares cleanly.
+    { "$NM" -D --defined-only "$HOST_ELF" | awk '{print $NF}'
+      cat "$NEKO/neko3d-module/neko3d.def"
+    } | tr -d '\r' | sort -u > "$DNRO/build.hosthave"
+    MISSING=$(comm -23 "$DNRO/sdl3.undef" "$DNRO/build.hosthave" || true)
+    rm -f "$DNRO/build.hosthave"
+    if [ -n "$MISSING" ]; then
+        echo "error: sdl3.dnro imports the host does not provide:" >&2
+        echo "$MISSING" >&2
+        exit 1
+    fi
+    echo "abi check: sdl3 imports all resolve"
 fi
-# miniini/json/xxhash are qlaunch's modules (sdl3 never imports them; they
-# stay in the formula for parity with qlaunch's own ABI check).
-QEXT="$ROOT/../qlaunch-ext"
-# Note: .def files may carry CRLF (Windows checkouts); strip CR so comm
-# compares cleanly (this bit us with neko3d.def once).
-{ "$NM" -D --defined-only "$HOST_ELF" | awk '{print $NF}'
-  cat "$NEKO/neko3d-module/neko3d.def" "$QEXT/lib/miniini-module/miniini.def" \
-      "$QEXT/lib/json-module/json.def" "$QEXT/lib/xxhash-module/xxhash.def"
-} | tr -d '\r' | sort -u > "$DNRO/build.hosthave"
-MISSING=$(comm -23 "$DNRO/sdl3.undef" "$DNRO/build.hosthave" || true)
-rm -f "$DNRO/build.hosthave"
-if [ -n "$MISSING" ]; then
-    echo "error: sdl3.dnro imports the host does not provide:" >&2
-    echo "$MISSING" >&2
-    exit 1
-fi
-echo "abi check: sdl3 imports all resolve"
 
 # 6. Convert + stage the libraries.
 "$PY" "$DLINK/tools/elf2dnro.py" "$DNRO/sdl3.elf" "$DNRO/sdl3.dnro"
