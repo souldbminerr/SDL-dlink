@@ -156,8 +156,6 @@ bool SWITCH_VideoInit(SDL_VideoDevice *_this)
         return false;
     }
 
-    // init psm service
-    psmInitialize();
     // init touch
     SWITCH_InitTouch();
     // init keyboard
@@ -189,8 +187,6 @@ void SWITCH_VideoQuit(SDL_VideoDevice *_this)
     SWITCH_QuitMouse();
     // exit software keyboard
     SWITCH_QuitSwkb();
-    // exit psm service
-    psmExit();
 }
 
 static bool SWITCH_GetDisplayModes(SDL_VideoDevice *_this, SDL_VideoDisplay *display)
