@@ -63,8 +63,8 @@ typedef struct
     int slot;
     int w, h;
     uint32_t pitch;
-    bool rgbadirect; // GPU bytes match the SDL format: Lock maps directly
-    void *shadow;    // staging for format conversion (NULL when rgbadirect)
+    bool rgbadirect;
+    void *shadow;
     SDL_Rect lockrect;
 } SWITCH_DEKO3D_TextureData;
 
@@ -100,6 +100,7 @@ typedef struct
     int fbW, fbH;
     int slot;
     bool drawing;
+    bool framePending; // submitted work still on the GPU: next CPU touch waits
     bool vsync;
     SDL_Rect viewport;
     bool viewport_dirty;
@@ -275,12 +276,21 @@ static void BindBlend(SWITCH_DEKO3D_RenderData *data, SDL_BlendMode blend, DkFac
     }
 }
 
+static void EnsureIdle(SWITCH_DEKO3D_RenderData *data)
+{
+    if (data->framePending) {
+        data->dk.dkQueueWaitIdle(data->queue);
+        data->framePending = false;
+    }
+}
+
 static bool StartDrawing(SWITCH_DEKO3D_RenderData *data)
 {
     DkImageView view;
     if (data->drawing) {
         return true;
     }
+    EnsureIdle(data);
     data->slot = data->dk.dkQueueAcquireImage(data->queue, data->swapchain);
     if (data->slot < 0) {
         return SDL_SetError("dkQueueAcquireImage failed");
@@ -380,6 +390,7 @@ static bool QueueInterleaved(SDL_Renderer *renderer, SDL_RenderCommand *cmd, SDL
     size_indices = indices ? size_indices : 0;
     cmd->data.draw.count = (size_t)count;
 
+    EnsureIdle(data);
     if (texture) {
         SWITCH_DEKO3D_TexVtx *verts = (SWITCH_DEKO3D_TexVtx *)VtxAlloc(data, (uint32_t)(count * sizeof(*verts)), &gpu);
         if (!verts) {
@@ -593,6 +604,7 @@ static bool SWITCH_DEKO3D_UpdateTexture(SDL_Renderer *renderer, SDL_Texture *tex
     if (!tex) {
         return SDL_SetError("Texture not initialized");
     }
+    EnsureIdle(data);
     UploadRows(data, tex, pixels, pitch, rect, texture->format);
     return true;
 }
@@ -606,6 +618,7 @@ static bool SWITCH_DEKO3D_LockTexture(SDL_Renderer *renderer, SDL_Texture *textu
     if (!tex) {
         return SDL_SetError("Texture not initialized");
     }
+    EnsureIdle(data);
     tex->lockrect = *rect;
     if (tex->rgbadirect) {
         uint8_t *base = (uint8_t *)data->dk.dkMemBlockGetCpuAddr(tex->mem);
@@ -840,6 +853,7 @@ static bool SWITCH_DEKO3D_RenderPresent(SDL_Renderer *renderer)
     data->dk.dkQueueSubmitCommands(data->queue, list);
     data->dk.dkQueuePresentImage(data->queue, data->swapchain, data->slot);
     data->drawing = false;
+    data->framePending = true;
     data->vtxCursor = 0;
     return true;
 }
@@ -852,6 +866,7 @@ static void SWITCH_DEKO3D_DestroyTexture(SDL_Renderer *renderer, SDL_Texture *te
         return;
     }
     data->dk.dkQueueWaitIdle(data->queue);
+    data->framePending = false;
     TexSlotFree(data, tex->slot);
     SDL_free(tex->shadow);
     data->dk.dkMemBlockDestroy(tex->mem);
