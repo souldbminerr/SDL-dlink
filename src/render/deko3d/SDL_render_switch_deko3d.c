@@ -153,8 +153,8 @@ static void WriteSamplerDesc(SWITCH_DEKO3D_RenderData *data)
 {
     DkSampler sam;
     dkSamplerDefaults(&sam);
-    sam.minFilter = DkFilter_Linear;
-    sam.magFilter = DkFilter_Linear;
+    sam.minFilter = DkFilter_Nearest;
+    sam.magFilter = DkFilter_Nearest;
     sam.wrapMode[0] = DkWrapMode_ClampToEdge;
     sam.wrapMode[1] = DkWrapMode_ClampToEdge;
     sam.wrapMode[2] = DkWrapMode_ClampToEdge;
@@ -468,11 +468,11 @@ static bool SWITCH_DEKO3D_SupportsBlendMode(SDL_Renderer *renderer, SDL_BlendMod
 static bool FormatConvertible(SDL_PixelFormat format, bool *out_direct)
 {
     switch (format) {
-    case SDL_PIXELFORMAT_RGBA8888:
-        *out_direct = true;
-        return true;
-    case SDL_PIXELFORMAT_ARGB8888:
     case SDL_PIXELFORMAT_ABGR8888:
+        *out_direct = true; // RGBA byte order on little-endian Switch
+        return true;
+    case SDL_PIXELFORMAT_RGBA8888:
+    case SDL_PIXELFORMAT_ARGB8888:
     case SDL_PIXELFORMAT_BGRA8888:
         *out_direct = false;
         return true;
@@ -483,27 +483,27 @@ static bool FormatConvertible(SDL_PixelFormat format, bool *out_direct)
 
 static void ConvertRowRGBA(uint8_t *dst, const uint8_t *src, int w, SDL_PixelFormat format)
 {
-    if (format == SDL_PIXELFORMAT_RGBA8888) {
+    if (format == SDL_PIXELFORMAT_ABGR8888) {
         SDL_memcpy(dst, src, (size_t)w * 4);
         return;
     }
     for (int i = 0; i < w; i++) {
         uint8_t a, r, g, b;
         if (format == SDL_PIXELFORMAT_ARGB8888) {
-            a = src[0];
-            r = src[1];
-            g = src[2];
-            b = src[3];
-        } else if (format == SDL_PIXELFORMAT_ABGR8888) {
+            b = src[0];
+            g = src[1];
+            r = src[2];
+            a = src[3];
+        } else if (format == SDL_PIXELFORMAT_RGBA8888) {
             a = src[0];
             b = src[1];
             g = src[2];
             r = src[3];
         } else { // SDL_PIXELFORMAT_BGRA8888
-            b = src[0];
-            g = src[1];
-            r = src[2];
-            a = src[3];
+            a = src[0];
+            r = src[1];
+            g = src[2];
+            b = src[3];
         }
         dst[0] = r;
         dst[1] = g;
